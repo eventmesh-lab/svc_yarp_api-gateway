@@ -15,6 +15,20 @@ var eventosServiceBaseUrl = builder.Configuration["EVENTOS_SERVICE_URL"] ?? "htt
 var keycloakAuthority = builder.Configuration["KEYCLOAK_AUTHORITY"] ?? "https://keycloak.local/auth/realms/myrealm";
 var keycloakAudience = builder.Configuration["KEYCLOAK_AUDIENCE"] ?? "eventmesh-api";
 
+// CORS - Configuración para permitir requests desde el frontend React
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowReactFrontend", policy =>
+    {
+        policy.WithOrigins(
+                builder.Configuration["CORS_ALLOWED_ORIGINS"]?.Split(',') ?? new[] { "http://localhost:3000", "http://localhost:5173" }
+            )
+            .AllowAnyMethod()
+            .AllowAnyHeader()
+            .AllowCredentials();
+    });
+});
+
 // DI: registramos implementaciones concretas
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
@@ -34,7 +48,7 @@ builder.Services.AddSwaggerGen(c =>
     c.AddSecurityRequirement(new OpenApiSecurityRequirement {
         {
             new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
-            new string[] {}
+            Array.Empty<string>()
         }
     });
 });
@@ -89,15 +103,26 @@ app.Use(async (context, next) =>
 
 app.UseRouting();
 
+// CORS debe estar antes de UseAuthentication y UseAuthorization
+app.UseCors("AllowReactFrontend");
+
 app.UseAuthentication();
 app.UseAuthorization();
 
+// Swagger siempre disponible (puedes restringirlo a Development si prefieres)
 if (app.Environment.IsDevelopment())
 {
     app.UseDeveloperExceptionPage();
-    app.UseSwagger();
-    app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "API Gateway v1"));
 }
+
+// Swagger disponible en todos los entornos para facilitar pruebas
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "API Gateway - EventMesh v1");
+    c.RoutePrefix = "swagger"; // Accesible en /swagger
+    c.DisplayRequestDuration();
+});
 
 app.MapHealthChecks("/health");
 
