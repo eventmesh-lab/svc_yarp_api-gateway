@@ -206,12 +206,91 @@ namespace svc_yar_api_gateway.Api.Controllers
         [Authorize]
         public async Task<IActionResult> GetEventById(string id)
         {
+            return await ProxyRequest(HttpMethod.Get, $"/api/eventos/{id}", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Crea un nuevo evento (requiere autenticación)
+        /// </summary>
+        /// <returns>ID del evento creado</returns>
+        [HttpPost]
+        [Authorize]
+        public async Task<IActionResult> CreateEvent()
+        {
+            return await ProxyRequestWithBody(HttpMethod.Post, "/api/eventos", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Edita un evento existente (requiere autenticación)
+        /// </summary>
+        /// <param name="id">ID del evento</param>
+        /// <returns>204 No Content si es exitoso</returns>
+        [HttpPut("{id}")]
+        [Authorize]
+        public async Task<IActionResult> UpdateEvent(string id)
+        {
+            return await ProxyRequestWithBody(HttpMethod.Put, $"/api/eventos/{id}", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Inicia el proceso de pago de publicación del evento (requiere autenticación)
+        /// </summary>
+        /// <param name="id">ID del evento</param>
+        /// <returns>202 Accepted</returns>
+        [HttpPost("{id}/pagar-publicacion")]
+        [Authorize]
+        public async Task<IActionResult> PayForPublication(string id)
+        {
+            return await ProxyRequestWithBody(HttpMethod.Post, $"/api/eventos/{id}/pagar-publicacion", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Publica un evento (requiere autenticación)
+        /// </summary>
+        /// <param name="id">ID del evento</param>
+        /// <returns>200 OK si es exitoso</returns>
+        [HttpPost("{id}/publicar")]
+        [Authorize]
+        public async Task<IActionResult> PublishEvent(string id)
+        {
+            return await ProxyRequestWithBody(HttpMethod.Post, $"/api/eventos/{id}/publicar", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Inicia un evento (requiere autenticación)
+        /// </summary>
+        /// <param name="id">ID del evento</param>
+        /// <returns>200 OK si es exitoso</returns>
+        [HttpPost("{id}/iniciar")]
+        [Authorize]
+        public async Task<IActionResult> StartEvent(string id)
+        {
+            return await ProxyRequest(HttpMethod.Post, $"/api/eventos/{id}/iniciar", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Finaliza un evento (requiere autenticación)
+        /// </summary>
+        /// <param name="id">ID del evento</param>
+        /// <returns>200 OK si es exitoso</returns>
+        [HttpPost("{id}/finalizar")]
+        [Authorize]
+        public async Task<IActionResult> FinalizeEvent(string id)
+        {
+            return await ProxyRequest(HttpMethod.Post, $"/api/eventos/{id}/finalizar", includeAuth: true);
+        }
+
+        /// <summary>
+        /// Helper method to proxy requests without body
+        /// </summary>
+        private async Task<IActionResult> ProxyRequest(HttpMethod method, string path, bool includeAuth = false)
+        {
             try
             {
                 var client = _httpClientFactory.CreateClient("eventos");
-                var path = $"/api/eventos/{id}" + (Request.QueryString.HasValue ? Request.QueryString.Value : string.Empty);
+                var fullPath = path + (Request.QueryString.HasValue ? Request.QueryString.Value : string.Empty);
 
-                var requestMessage = new HttpRequestMessage(HttpMethod.Get, path);
+                var requestMessage = new HttpRequestMessage(method, fullPath);
 
                 // Forward correlation id
                 if (Request.Headers.TryGetValue("X-Correlation-ID", out var correlation))
@@ -219,13 +298,13 @@ namespace svc_yar_api_gateway.Api.Controllers
                     requestMessage.Headers.Add("X-Correlation-ID", correlation.ToString());
                 }
 
-                // Forward Authorization header to backend service
-                if (Request.Headers.TryGetValue("Authorization", out var authHeader))
+                // Forward Authorization header if required
+                if (includeAuth && Request.Headers.TryGetValue("Authorization", out var authHeader))
                 {
                     requestMessage.Headers.Add("Authorization", authHeader.ToString());
                 }
 
-                _logger.LogInformation("Proxying authenticated request to eventos service: {Path}", path);
+                _logger.LogInformation("Proxying {Method} request to eventos service: {Path}", method, fullPath);
 
                 var response = await client.SendAsync(requestMessage);
                 var content = await response.Content.ReadAsStringAsync();
@@ -235,7 +314,7 @@ namespace svc_yar_api_gateway.Api.Controllers
                     _logger.LogWarning(
                         "Eventos service returned error status {StatusCode} for path {Path}",
                         response.StatusCode,
-                        path);
+                        fullPath);
                 }
 
                 return new ContentResult
@@ -257,7 +336,87 @@ namespace svc_yar_api_gateway.Api.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Unexpected error in GetEventById");
+                _logger.LogError(ex, "Unexpected error in ProxyRequest");
+                return StatusCode(500, new { error = "Error interno del servidor" });
+            }
+        }
+
+        /// <summary>
+        /// Helper method to proxy requests with body
+        /// </summary>
+        private async Task<IActionResult> ProxyRequestWithBody(HttpMethod method, string path, bool includeAuth = false)
+        {
+            try
+            {
+                var client = _httpClientFactory.CreateClient("eventos");
+                var fullPath = path + (Request.QueryString.HasValue ? Request.QueryString.Value : string.Empty);
+
+                // Read the body from the incoming request
+                string requestBody = string.Empty;
+                if (Request.Body.CanRead)
+                {
+                    using var reader = new StreamReader(Request.Body);
+                    requestBody = await reader.ReadToEndAsync();
+                }
+
+                var requestMessage = new HttpRequestMessage(method, fullPath);
+                
+                if (!string.IsNullOrEmpty(requestBody))
+                {
+                    requestMessage.Content = new StringContent(requestBody, System.Text.Encoding.UTF8, "application/json");
+                }
+
+                // Forward correlation id
+                if (Request.Headers.TryGetValue("X-Correlation-ID", out var correlation))
+                {
+                    requestMessage.Headers.Add("X-Correlation-ID", correlation.ToString());
+                }
+
+                // Forward Authorization header if required
+                if (includeAuth && Request.Headers.TryGetValue("Authorization", out var authHeader))
+                {
+                    requestMessage.Headers.Add("Authorization", authHeader.ToString());
+                }
+
+                _logger.LogInformation("Proxying {Method} request with body to eventos service: {Path}", method, fullPath);
+
+                var response = await client.SendAsync(requestMessage);
+                var content = await response.Content.ReadAsStringAsync();
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    _logger.LogWarning(
+                        "Eventos service returned error status {StatusCode} for path {Path}",
+                        response.StatusCode,
+                        fullPath);
+                }
+
+                // Forward Location header if present (useful for 202 Accepted responses)
+                if (response.Headers.Location != null)
+                {
+                    Response.Headers["Location"] = response.Headers.Location.ToString();
+                }
+
+                return new ContentResult
+                {
+                    Content = content,
+                    StatusCode = (int)response.StatusCode,
+                    ContentType = "application/json"
+                };
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogError(ex, "Error communicating with eventos service");
+                return StatusCode(502, new { error = "Error al comunicarse con el servicio de eventos", message = ex.Message });
+            }
+            catch (TaskCanceledException ex)
+            {
+                _logger.LogError(ex, "Timeout communicating with eventos service");
+                return StatusCode(504, new { error = "Timeout al comunicarse con el servicio de eventos" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Unexpected error in ProxyRequestWithBody");
                 return StatusCode(500, new { error = "Error interno del servidor" });
             }
         }

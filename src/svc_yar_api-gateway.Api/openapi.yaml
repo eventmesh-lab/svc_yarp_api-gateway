@@ -41,12 +41,114 @@ components:
           type: string
         organizadorId:
           type: string
+    CreateEventoRequest:
+      type: object
+      required:
+        - nombre
+        - descripcion
+        - fecha
+        - organizadorId
+        - venueId
+      properties:
+        nombre:
+          type: string
+        descripcion:
+          type: string
+        fecha:
+          type: string
+          format: date-time
+        horasDuracion:
+          type: integer
+        minutosDuracion:
+          type: integer
+        organizadorId:
+          type: string
+          format: uuid
+        venueId:
+          type: string
+          format: uuid
+        categoria:
+          type: string
+        tarifaPublicacion:
+          type: number
+          format: float
+        secciones:
+          type: array
+          items:
+            $ref: '#/components/schemas/SeccionRequest'
+    SeccionRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+        capacidad:
+          type: integer
+        precio:
+          type: number
+          format: float
+        tipoAsiento:
+          type: string
+    PagarPublicacionRequest:
+      type: object
+      required:
+        - transaccionPagoId
+        - monto
+      properties:
+        transaccionPagoId:
+          type: string
+          format: uuid
+        monto:
+          type: number
+          format: float
+    PublicarEventoRequest:
+      type: object
+      required:
+        - pagoConfirmadoId
+      properties:
+        pagoConfirmadoId:
+          type: string
+          format: uuid
+    EventoCreatedResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
 security:
   - bearerAuth: []
 paths:
+  /api/eventos:
+    post:
+      summary: Crear un nuevo evento (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventoRequest'
+      responses:
+        '201':
+          description: Evento creado exitosamente
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EventoCreatedResponse'
+        '400':
+          description: Datos inválidos o validación fallida
+        '401':
+          description: No autenticado
   /api/eventos/publicados:
     get:
       summary: Obtener eventos publicados (proxy hacia EventosService)
+      tags:
+        - Eventos
       parameters:
         - in: query
           name: categoria
@@ -93,3 +195,171 @@ paths:
           description: Bad Request
         '500':
           description: Server error
+  /api/eventos/{id}:
+    get:
+      summary: Obtener un evento por ID (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID del evento
+      responses:
+        '200':
+          description: Detalles del evento
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evento'
+        '404':
+          description: Evento no encontrado
+        '401':
+          description: No autenticado
+    put:
+      summary: Editar un evento existente (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID del evento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateEventoRequest'
+      responses:
+        '204':
+          description: Evento actualizado exitosamente
+        '400':
+          description: Datos inválidos o evento no está en estado borrador
+        '404':
+          description: Evento no encontrado
+        '401':
+          description: No autenticado
+  /api/eventos/{id}/pagar-publicacion:
+    post:
+      summary: Pagar publicación del evento (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID del evento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PagarPublicacionRequest'
+      responses:
+        '202':
+          description: Pago iniciado, proceso en curso
+          headers:
+            Location:
+              schema:
+                type: string
+              description: URL del evento
+        '400':
+          description: Datos inválidos o monto no coincide con tarifa
+        '404':
+          description: Evento no encontrado
+        '401':
+          description: No autenticado
+  /api/eventos/{id}/publicar:
+    post:
+      summary: Publicar un evento (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID del evento
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PublicarEventoRequest'
+      responses:
+        '200':
+          description: Evento publicado exitosamente
+        '400':
+          description: Evento no puede ser publicado (estado inválido o pago no confirmado)
+        '404':
+          description: Evento no encontrado
+        '401':
+          description: No autenticado
+  /api/eventos/{id}/iniciar:
+    post:
+      summary: Iniciar un evento (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID del evento
+      responses:
+        '200':
+          description: Evento iniciado exitosamente
+        '400':
+          description: Evento no puede ser iniciado (estado inválido)
+        '404':
+          description: Evento no encontrado
+        '401':
+          description: No autenticado
+  /api/eventos/{id}/finalizar:
+    post:
+      summary: Finalizar un evento (proxy hacia EventosService)
+      tags:
+        - Eventos
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: ID del evento
+      responses:
+        '200':
+          description: Evento finalizado exitosamente
+        '400':
+          description: Evento no puede ser finalizado (estado inválido)
+        '404':
+          description: Evento no encontrado
+        '401':
+          description: No autenticado
